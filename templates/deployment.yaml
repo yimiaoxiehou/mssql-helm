@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "sql-statefull-deploy.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ .Release.Name }}
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "sql-statefull-deploy.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "sql-statefull-deploy.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+      - name: chown
+        image: docker.utpf.cn/library/busybox
+        command:
+          - /bin/sh
+          - -c 
+          - chown -R {{ .Values.podSecurityContext.fsGroup }}:{{ .Values.podSecurityContext.fsGroup }} /var/opt/mssql
+        volumeMounts: 
+          - name: {{ .Release.Name }}-data
+            mountPath: "/var/opt/mssql"
+      containers:
+        - name: mssql
+          command:
+            - /bin/bash
+            - -c
+            - cp /var/opt/config/mssql.conf /var/opt/mssql/mssql.conf && /opt/mssql/bin/sqlservr
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+           - containerPort: {{ .Values.containers.ports.containerPort}}
+          env:
+           - name: MSSQL_PID
+             value: "{{ .Values.MSSQL_PID.value}}"
+           - name: ACCEPT_EULA
+             value: "{{ .Values.ACCEPT_EULA.value | upper}}"
+           - name: MSSQL_AGENT_ENABLED
+             value: "{{ .Values.MSSQL_AGENT_ENABLED.value}}"
+           - name: SA_PASSWORD
+             valueFrom:
+              secretKeyRef:
+               name: {{ .Release.Name }}-secret
+               key: SA_PASSWORD 
+          volumeMounts:
+           - name: mssql-config-volume
+             mountPath: /var/opt/config  
+           - name: {{ .Release.Name }}-data
+             mountPath: "/var/opt/mssql"
+      volumes:
+       - name: mssql-config-volume
+         configMap:
+          name: {{ .Release.Name }}-config
+  volumeClaimTemplates:
+    - metadata:
+       name: {{ .Release.Name }}-data
+      spec:
+       storageClassName: {{ .Values.pvc.StorageClass}}
+       accessModes:
+       - ReadWriteOnce
+       resources:
+        requests:
+         storage: 8Gi
