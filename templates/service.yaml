@@ -3,12 +3,11 @@ kind: Service
 metadata:
   name: {{ .Release.Name }}
   labels:
+    app: {{ .Release.Name }}
     {{- include "sql-statefull-deploy.labels" . | nindent 4 }}
 spec:
-  clusterIP: None
   ports:
     - port: {{ .Values.service.port }}
-      targetPort: http
-      protocol: TCP
+      name: mssql
   selector:
     {{- include "sql-statefull-deploy.selectorLabels" . | nindent 4 }}
